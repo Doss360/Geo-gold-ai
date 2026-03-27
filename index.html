@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEO/SCAN — National Satellite Resource Network</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;500;600&display=swap');
+        :root{
+            --gold:#C8930A;--gold-l:#F5C842;--gold-dim:#7A5A06;
+            --bg0:#0B0D0F;--bg1:#111418;--bg2:#171C22;--bg3:#1E2530;
+            --border:#2A3340;--text:#C8D4E0;--text2:#7A9AB8;--teal:#28C8A8;
+        }
+        body{font-family:'Barlow',sans-serif;background:var(--bg0);color:var(--text);font-size:13px;margin:0;padding:0;height:100vh;overflow:hidden}
+        .shell{display:grid;grid-template-rows:48px 1fr;height:100vh}
+        .topbar{background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:16px}
+        .logo{font-family:'Share Tech Mono',monospace;font-size:15px;color:var(--gold-l);letter-spacing:2px}
+        .status-pill{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600}
+        .active{background:#0D3020;color:var(--teal);border:1px solid #1A4A30}
+        .main{display:grid;grid-template-columns:260px 1fr 260px;height:calc(100vh - 48px);overflow:hidden}
+        .left,.right{background:var(--bg1);padding:12px;overflow-y:auto;border-right:1px solid var(--border)}
+        .right{border-right:none;border-left:1px solid var(--border)}
+        .section-label{font-size:10px;font-weight:600;letter-spacing:1.5px;color:#7A9AB8;text-transform:uppercase;margin-bottom:6px}
+        .map-container{height:100%;background:#0B0D0F;position:relative}
+        #map{height:100%;width:100%}
+        .sat-buttons{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+        .sat-btn{padding:6px 12px;font-size:11px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;cursor:pointer}
+        .sat-btn.active{background:var(--gold-dim);color:var(--gold-l);border-color:var(--gold)}
+        .site-item{padding:8px;background:var(--bg2);margin-bottom:4px;border-radius:4px;cursor:pointer;font-size:12px}
+        .site-item:hover{background:#1E2A38}
+        .alert-box{padding:8px;border-radius:6px;margin-bottom:6px;font-size:12px}
+        .alert-gold{background:#1A1000;border:1px solid var(--gold-dim);color:var(--gold-l)}
+        #notification{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1A1000;border:1px solid var(--gold);color:var(--gold-l);padding:12px 20px;border-radius:6px;box-shadow:0 0 15px rgba(245,200,66,0.3);display:none;z-index:1000;font-size:13px;max-width:85%;text-align:center}
+        .scan-btn{background:#0A2A10;color:#3DCC7A;border:none;padding:12px;border-radius:6px;width:100%;font-weight:600;cursor:pointer;margin-top:10px}
+    </style>
+</head>
+<body>
+<div class="shell">
+    <div class="topbar">
+        <div class="logo">GEO<span>/</span>SCAN</div>
+        <div class="status-pill active">● NATIONAL SATELLITE MODE ENABLED</div>
+        <div style="margin-left:auto;color:#7A9AB8;font-size:12px">Ghana Resource Network — All Regions</div>
+    </div>
+
+    <div class="main">
+        <!-- Left Panel -->
+        <div class="left">
+            <div class="section-label">SATELLITE ACCESS</div>
+            <div class="sat-buttons" id="sat-buttons"></div>
+
+            <div class="section-label">MISSION STATUS — NATIONAL</div>
+            <div style="font-size:12px">National Coverage: <span id="cov-val" style="color:#F5C842">98%</span></div>
+            <div style="font-size:12px">Area Scanned: <span id="area-val" style="color:#28C8A8">22.1 km² + 12 sites</span></div>
+            <div style="font-size:12px">Detections: <span id="det-val" style="color:#3DCC7A">2988</span></div>
+
+            <div class="section-label" style="margin-top:20px">ALL GOLD & MINING SITES</div>
+            <div id="site-list"></div>
+
+            <button onclick="startPredictionScan()" class="scan-btn">🚀 START GEO-SCAN PREDICTION</button>
+        </div>
+
+        <!-- Center Map -->
+        <div class="map-container">
+            <div id="map"></div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right">
+            <div class="section-label">LIVE DETECTIONS</div>
+            <div class="alert-box alert-gold" id="top-alert">High-confidence gold signature at Obuasi extension — 97%</div>
+            <div class="alert-box" style="background:#0A1820;color:#28C8A8" id="second-alert">New lithium cluster detected Ewoyaa — 82%</div>
+
+            <div class="section-label">MINERAL BREAKDOWN</div>
+            <div id="minerals" style="font-size:12px"></div>
+
+            <div style="margin-top:auto;padding-top:15px">
+                <button onclick="exportData()" style="width:100%;padding:8px;background:#0A1830;color:#28C8A8;border:none;border-radius:6px;margin-bottom:8px">Export Full GeoJSON + Satellite Layers</button>
+                <button onclick="generateReport()" style="width:100%;padding:8px;background:#1A1000;color:#F5C842;border:none;border-radius:6px">National PDF Report</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="notification"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// Notification
+function showNotification(message) {
+    const notif = document.getElementById('notification');
+    notif.textContent = message;
+    notif.style.display = 'block';
+    setTimeout(() => notif.style.display = 'none', 4500);
+}
+
+// Leaflet Map
+const map = L.map('map').setView([7.5, -1.5], 7);
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution: '&copy; OpenStreetMap'});
+const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {attribution: 'Esri'});
+let currentLayer = osm; osm.addTo(map);
+
+// Satellite buttons
+const satellites = [{id:'osm',name:'Base Map'},{id:'satellite',name:'Esri Satellite'},{id:'sentinel',name:'Sentinel-2 (Multispectral)'}];
+const satDiv = document.getElementById('sat-buttons');
+satellites.forEach(s => {
+    const btn = document.createElement('div');
+    btn.className = 'sat-btn';
+    btn.textContent = s.name;
+    btn.onclick = () => {
+        document.querySelectorAll('.sat-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        if (currentLayer) map.removeLayer(currentLayer);
+        currentLayer = (s.id==='satellite') ? esriSatellite : osm;
+        currentLayer.addTo(map);
+    };
+    satDiv.appendChild(btn);
+});
+
+// Known mining sites
+const miningSites = [
+    {name: "Obuasi Mine", lat: 6.20, lng: -1.67, conf: 97, type: "Gold"},
+    {name: "Tarkwa Mine", lat: 5.30, lng: -1.98, conf: 94, type: "Gold"},
+    {name: "Ahafo Mine", lat: 7.05, lng: -2.42, conf: 92, type: "Gold"},
+    {name: "Ewoyaa Lithium", lat: 5.42, lng: -0.83, conf: 82, type: "Lithium"}
+];
+miningSites.forEach(site => {
+    L.marker([site.lat, site.lng]).addTo(map).bindPopup(`<b>${site.name}</b><br>${site.type} — ${site.conf}%`);
+});
+
+// Site list
+const siteList = document.getElementById('site-list');
+miningSites.forEach(site => {
+    const div = document.createElement('div');
+    div.className = 'site-item';
+    div.innerHTML = `${site.name} <span style="color:#F5C842">(${site.conf}%)</span>`;
+    div.onclick = () => map.flyTo([site.lat, site.lng], 10);
+    siteList.appendChild(div);
+});
+
+document.getElementById('minerals').innerHTML = `Gold ore <span style="color:#F5C842">97%</span><br>Bauxite <span style="color:#D8B070">76%</span><br>Lithium <span style="color:#88E0FF">82%</span><br>Manganese <span style="color:#A8B8C8">72%</span>`;
+
+// ====================== PREDICTION ENGINE ======================
+let predictionLayer = null;
+
+function startPredictionScan() {
+    showNotification("🔄 GEO-SCAN PREDICTION STARTED — Analyzing satellite + geological data...");
+
+    // Fake scan progress
+    setTimeout(() => {
+        // Remove old prediction if exists
+        if (predictionLayer) map.removeLayer(predictionLayer);
+
+        // Create new prediction layer (colored circles = probability)
+        predictionLayer = L.layerGroup().addTo(map);
+
+        const predictions = [
+            {lat:6.35, lng:-1.55, radius:42000, conf:94, label:"High Gold Potential (Birimian Belt)", color:"#F5C842"},
+            {lat:5.45, lng:-1.85, radius:38000, conf:89, label:"Tarkwa-Prestea Gold Extension", color:"#F5C842"},
+            {lat:7.10, lng:-2.35, radius:35000, conf:87, label:"Ahafo Gold Corridor", color:"#F5C842"},
+            {lat:5.38, lng:-0.80, radius:28000, conf:91, label:"Lithium Pegmatite Zone (Ewoyaa style)", color:"#88E0FF"},
+            {lat:6.28, lng:-2.15, radius:25000, conf:78, label:"Bauxite Plateau (Awaso type)", color:"#D8B070"},
+            {lat:5.25, lng:-1.70, radius:30000, conf:73, label:"Manganese Potential", color:"#A8B8C8"}
+        ];
+
+        predictions.forEach(p => {
+            const circle = L.circle
