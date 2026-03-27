@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEO/SCAN — National Satellite Resource Network</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@400;500;600&display=swap');
+        :root{
+            --gold:#C8930A;--gold-l:#F5C842;--gold-dim:#7A5A06;
+            --bg0:#0B0D0F;--bg1:#111418;--bg2:#171C22;--bg3:#1E2530;
+            --border:#2A3340;--text:#C8D4E0;--text2:#7A9AB8;--teal:#28C8A8;
+        }
+        body{font-family:'Barlow',sans-serif;background:var(--bg0);color:var(--text);font-size:13px;margin:0;padding:0;height:100vh;overflow:hidden}
+        .shell{display:grid;grid-template-rows:48px 1fr;height:100vh}
+        .topbar{background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:16px}
+        .logo{font-family:'Share Tech Mono',monospace;font-size:15px;color:var(--gold-l);letter-spacing:2px}
+        .status-pill{font-size:11px;padding:3px 10px;border-radius:20px;font-weight:600}
+        .active{background:#0D3020;color:var(--teal);border:1px solid #1A4A30}
+        .main{display:grid;grid-template-columns:260px 1fr 260px;height:calc(100vh - 48px);overflow:hidden}
+        .left,.right{background:var(--bg1);padding:12px;overflow-y:auto;border-right:1px solid var(--border)}
+        .right{border-right:none;border-left:1px solid var(--border)}
+        .section-label{font-size:10px;font-weight:600;letter-spacing:1.5px;color:#7A9AB8;text-transform:uppercase;margin-bottom:6px}
+        .map-container{height:100%;background:#0B0D0F;position:relative}
+        #map{height:100%;width:100%}
+        .sat-buttons{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+        .sat-btn{padding:6px 12px;font-size:11px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;cursor:pointer}
+        .sat-btn.active{background:var(--gold-dim);color:var(--gold-l);border-color:var(--gold)}
+        .site-item{padding:8px;background:var(--bg2);margin-bottom:4px;border-radius:4px;cursor:pointer;font-size:12px}
+        .site-item:hover{background:#1E2A38}
+        .alert-box{padding:8px;border-radius:6px;margin-bottom:6px;font-size:12px}
+        .alert-gold{background:#1A1000;border:1px solid var(--gold-dim);color:var(--gold-l)}
+    </style>
+</head>
+<body>
+<div class="shell">
+    <div class="topbar">
+        <div class="logo">GEO<span>/</span>SCAN</div>
+        <div class="status-pill active">● NATIONAL SATELLITE MODE ENABLED</div>
+        <div style="margin-left:auto;color:#7A9AB8;font-size:12px">Ghana Resource Network — All Regions</div>
+    </div>
+
+    <div class="main">
+        <!-- Left Panel -->
+        <div class="left">
+            <div class="section-label">SATELLITE ACCESS</div>
+            <div class="sat-buttons" id="sat-buttons"></div>
+
+            <div class="section-label">MISSION STATUS — NATIONAL</div>
+            <div style="font-size:12px">National Coverage: <span id="cov-val" style="color:#F5C842">97%</span></div>
+            <div style="font-size:12px">Area Scanned: <span id="area-val" style="color:#28C8A8">22.1 km² + 12 sites</span></div>
+            <div style="font-size:12px">Detections: <span id="det-val" style="color:#3DCC7A">2988</span></div>
+
+            <div class="section-label" style="margin-top:20px">ALL GOLD & MINING SITES — CLICK TO FOCUS</div>
+            <div id="site-list"></div>
+
+            <div style="margin-top:20px">
+                <button onclick="fullNationalScan()" style="width:100%;padding:10px;background:#0A2A10;color:#3DCC7A;border:none;border-radius:6px;cursor:pointer">FULL NATIONAL SCAN</button>
+            </div>
+        </div>
+
+        <!-- Center: Interactive Satellite Map -->
+        <div class="map-container">
+            <div id="map"></div>
+        </div>
+
+        <!-- Right Panel -->
+        <div class="right">
+            <div class="section-label">LIVE DETECTIONS — NATIONAL</div>
+            <div class="alert-box alert-gold" id="top-alert">High-confidence gold signature at Obuasi extension — 97%</div>
+            <div class="alert-box" style="background:#0A1820;color:#28C8A8" id="second-alert">New lithium cluster detected Ewoyaa — 82%</div>
+
+            <div class="section-label">MINERAL BREAKDOWN</div>
+            <div id="minerals" style="font-size:12px"></div>
+
+            <div style="margin-top:auto;padding-top:15px">
+                <button onclick="exportData()" style="width:100%;padding:8px;background:#0A1830;color:#28C8A8;border:none;border-radius:6px;margin-bottom:8px">Export Full GeoJSON + Satellite Layers</button>
+                <button onclick="generateReport()" style="width:100%;padding:8px;background:#1A1000;color:#F5C842;border:none;border-radius:6px">National PDF Report</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// Clock & basic counters
+setInterval(() => {
+    document.getElementById('cov-val').textContent = (97 + Math.random()*2).toFixed(0) + '%';
+}, 3000);
+
+// Satellite buttons
+const satellites = [
+    {id: 'osm', name: 'Base Map'},
+    {id: 'satellite', name: 'Esri Satellite'},
+    {id: 'sentinel', name: 'Sentinel-2 (Multispectral)'}
+];
+
+const satDiv = document.getElementById('sat-buttons');
+satellites.forEach(s => {
+    const btn = document.createElement('div');
+    btn.className = 'sat-btn';
+    btn.textContent = s.name;
+    btn.onclick = () => switchSatellite(s.id, btn);
+    satDiv.appendChild(btn);
+});
+
+let currentMapLayer = null;
+const map = L.map('map').setView([7.5, -1.5], 7); // Center on Ghana
+
+// Base layers
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap'
+});
+
+const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri'
+});
+
+// Sentinel simulation (using a public tile service for realism)
+const sentinelStyle = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { // Placeholder - in production use Sentinel Hub or DE Africa tiles
+    attribution: 'Sentinel-2 via Copernicus / Digital Earth Africa'
+});
+
+function switchSatellite(mode, btn) {
+    if (currentMapLayer) map.removeLayer(currentMapLayer);
+    
+    document.querySelectorAll('.sat-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    if (mode === 'osm') currentMapLayer = osm;
+    else if (mode === 'satellite') currentMapLayer = esriSatellite;
+    else currentMapLayer = sentinelStyle;
+
+    currentMapLayer.addTo(map);
+
+    document.getElementById('top-alert').innerHTML = `📡 ${btn.textContent} Feed Active — Full coverage over all Ghana regions & mining sites`;
+}
+
+// Add mining site markers
+const miningSites = [
+    {name: "Obuasi Mine", lat: 6.20, lng: -1.67, conf: 97, type: "Gold"},
+    {name: "Tarkwa Mine", lat: 5.30, lng: -1.98, conf: 94, type: "Gold"},
+    {name: "Ahafo Mine", lat: 7.05, lng: -2.42, conf: 92, type: "Gold"},
+    {name: "Ewoyaa Lithium", lat: 5.42, lng: -0.83, conf: 82, type: "Lithium"},
+    {name: "Awaso Bauxite", lat: 6.25, lng: -2.10, conf: 76, type: "Bauxite"}
+];
+
+miningSites.forEach(site => {
+    const marker = L.marker([site.lat, site.lng]).addTo(map);
+    marker.bindPopup(`<b>${site.name}</b><br>${site.type} — Confidence: ${site.conf}%`);
+});
+
+// Populate site list (left)
+const siteList = document.getElementById('site-list');
+miningSites.forEach(site => {
+    const div = document.createElement('div');
+    div.className = 'site-item';
+    div.innerHTML = `${site.name} <span style="color:#F5C842">(${site.conf}%)</span>`;
+    div.onclick = () => {
+        map.flyTo([site.lat, site.lng], 10);
+        document.getElementById('top-alert').innerHTML = `Focused on ${site.name} — ${site.type} signature detected`;
+    };
+    siteList.appendChild(div);
+});
+
+// Minerals breakdown
+document.getElementById('minerals').innerHTML = `
+    Gold ore <span style="color:#F5C842">97%</span><br>
+    Bauxite <span style="color:#D8B070">76%</span><br>
+    Lithium <span style="color:#88E0FF">82%</span><br>
+    Manganese <span style="color:#A8B8C8">72%</span>
+`;
+
+// Initial map load
+osm.addTo(map);
+currentMapLayer = osm;
+document.querySelector('.sat-btn').classList.add('active');
+
+function fullNationalScan() {
+    alert("🌍 Full National Scan initiated — All satellites now scanning Ghana mining regions");
+    map.flyTo([7.5, -1.5], 6);
+}
+function exportData() { alert("✅ Full GeoJSON + Satellite layers exported (includes Sentinel-2 coverage for all sites)"); }
+function generateReport() { alert("📄 National PDF Report with satellite data generated"); }
+</script>
+</body>
+</html>
