@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GEO/SCAN — National Satellite Resource Network</title>
+<style>
+/* (Paste the full CSS from our previous national version here — keep the dark theme, gold accents, etc.) */
+/* Add this extra for map improvements */
+.map-area { position:relative; overflow:hidden; background:#0B0D0F; }
+#terrain { width:100%; height:100%; display:block; image-rendering: pixelated; }
+.sat-selector { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+.sat-btn { padding:5px 10px; font-size:11px; background:var(--bg2); border:1px solid var(--border); border-radius:4px; cursor:pointer; }
+.sat-btn.active { background:var(--gold-dim); color:var(--gold-l); border-color:var(--gold); }
+</style>
+</head>
+<body>
+<div class="shell"> <!-- Use the full shell structure from previous national version -->
+
+  <!-- Topbar same as before, update title to "National Satellite Resource Network" -->
+
+  <div class="main">
+    <!-- Left Panel: Add Satellite Selector above site list -->
+    <div class="left">
+      <div>
+        <div class="section-label">SATELLITE CONSTELLATION ACCESS</div>
+        <div class="sat-selector" id="sat-selector">
+          <!-- Populated by JS: Sentinel-2, Landsat-9, Sentinel-1, etc. -->
+        </div>
+      </div>
+      <!-- Rest of left panel: mission status, sites, lasers, buttons -->
+    </div>
+
+    <!-- Center: Enhanced Map with Satellite Overlay Simulation -->
+    <div class="map-area">
+      <canvas id="terrain"></canvas>
+      <div class="map-overlay"> <!-- scan-line, drone-dot, coord-badge same --> </div>
+    </div>
+
+    <!-- Right Panel: Same as before, plus "Current Satellite Feed" info -->
+  </div>
+</div>
+
+<script>
+// (Paste all previous JS: clock, toggles, minerals, sites array, drawTerrain, animDrone, counters)
+
+// Enhanced drawTerrain with satellite simulation
+function drawTerrain(satMode = 'sentinel2') {
+  // ... base drawing code (grid, scanned area, hotspots for Obuasi, Tarkwa, Ahafo, Ewoyaa, etc.)
+
+  // Simulate different satellite views
+  if (satMode === 'sentinel1') {
+    // Radar style: more grayscale, highlight mining scars
+    ctx.fillStyle = 'rgba(40,200,168,0.15)';
+  } else if (satMode === 'landsat') {
+    // Optical false-color for vegetation/minerals
+    ctx.fillStyle = 'rgba(245,200,66,0.12)';
+  } // etc.
+  
+  // Add region labels: Ashanti, Western, Central, Ahafo, etc.
+}
+
+// Satellite selector logic
+const satellites = [
+  {id:'sentinel2', name:'Sentinel-2 (Multispectral)', region:'All Ghana', res:'10m'},
+  {id:'sentinel1', name:'Sentinel-1 (Radar)', region:'Cloud-prone areas', res:'20m'},
+  {id:'landsat9', name:'Landsat-9 (Optical)', region:'National Archive', res:'30m'},
+  {id:'combined', name:'Multi-Sensor Fusion', region:'Gold Belts', res:'Hybrid'}
+];
+
+const selEl = document.getElementById('sat-selector');
+satellites.forEach(s => {
+  const btn = document.createElement('div');
+  btn.className = 'sat-btn';
+  btn.textContent = s.name;
+  btn.onclick = () => {
+    document.querySelectorAll('.sat-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    drawTerrain(s.id); // Update map
+    document.getElementById('top-alert').innerHTML = `📡 Live feed from ${s.name} — ${s.region} coverage active`;
+  };
+  selEl.appendChild(btn);
+});
+
+// Initial draw
+setTimeout(() => { drawTerrain('sentinel2'); animDrone(); }, 300);
+
+// Add region filter if needed (extra buttons for Ashanti, Western, etc.)
+</script>
+</body>
+</html>
